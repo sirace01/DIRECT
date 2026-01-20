@@ -1,5 +1,4 @@
 
-import { GoogleGenAI } from "@google/genai";
 import { Notification } from "../types";
 
 export const analyzeNotifications = async (items: any[], tasks: any[]): Promise<Notification[]> => {

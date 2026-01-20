@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Teacher, ItemAnalysis, LabConsumable, Task, Notification } from '../types';
+import { Teacher, ItemAnalysis, Task, Notification } from '../types';
 
 interface DashboardProps {
   notifications: Notification[];

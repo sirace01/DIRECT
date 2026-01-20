@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { Teacher, ItemAnalysis, ToolItem, LabConsumable, Task } from './types';
 
 export const MOCK_TEACHERS: Teacher[] = [
