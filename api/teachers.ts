@@ -31,7 +31,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
-    console.error(error);
-    return res.status(500).json({ error: error.message });
+    console.error("API Error [Teachers]:", error);
+    return res.status(500).json({ error: "Internal Server Error", message: error.message });
   }
 }

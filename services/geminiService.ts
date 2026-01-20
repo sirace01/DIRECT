@@ -3,13 +3,20 @@ import { GoogleGenAI } from "@google/genai";
 import { Notification } from "../types";
 
 export const analyzeNotifications = async (items: any[], tasks: any[]): Promise<Notification[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  // Use a safe check for the API key to prevent boot-time ReferenceErrors
+  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || "";
   
-  // Simulated processing for demo - in a real app, this would use a proper prompt
+  // Return early if no key is provided to avoid crashing the whole dashboard
+  if (!apiKey) {
+    console.warn("Gemini API key not found. Smart notifications will use logic-only fallback.");
+  }
+
   const now = new Date();
   const alerts: Notification[] = [];
 
+  // Logic-based notification engine (Fallback for when AI is unavailable)
   items.forEach(item => {
+    if (!item.expiryDate) return;
     const expiry = new Date(item.expiryDate);
     const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays < 30 && diffDays > 0) {
@@ -24,7 +31,7 @@ export const analyzeNotifications = async (items: any[], tasks: any[]): Promise<
   });
 
   tasks.forEach(task => {
-    if (task.status === 'Pending') {
+    if (task.status === 'Pending' && task.deadline) {
       const deadline = new Date(task.deadline);
       const diffDays = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       if (diffDays < 3 && diffDays >= 0) {

@@ -1,8 +1,12 @@
 
 import { neon } from '@neondatabase/serverless';
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is not set');
+// This URL is usually provided in your Neon Dashboard (e.g., postgresql://user:pass@ep-hostname.region.aws.neon.tech/neondb)
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  console.error("DATABASE_URL is missing. Please add it to your Vercel environment variables.");
 }
 
-export const sql = neon(process.env.DATABASE_URL);
+// Create the SQL client
+export const sql = neon(databaseUrl || "");

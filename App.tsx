@@ -6,19 +6,27 @@ import TeacherModule from './components/TeacherModule';
 import InventoryModule from './components/InventoryModule';
 import ProposalView from './components/ProposalView';
 import { analyzeNotifications } from './services/geminiService';
+import { 
+  MOCK_TEACHERS, 
+  MOCK_TASKS, 
+  MOCK_TOOLS, 
+  MOCK_CONSUMABLES, 
+  MOCK_ITEM_ANALYSIS 
+} from './constants';
 import { Notification, UserRole, Teacher, Task, ToolItem, LabConsumable, ItemAnalysis } from './types';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [role] = useState<UserRole>('ADMIN');
   const [isLoading, setIsLoading] = useState(true);
+  const [dbConnected, setDbConnected] = useState(false);
 
   // State Management
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [tools, setTools] = useState<ToolItem[]>([]);
-  const [consumables, setConsumables] = useState<LabConsumable[]>([]);
-  const [analyses, setAnalyses] = useState<ItemAnalysis[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>(MOCK_TEACHERS);
+  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
+  const [tools, setTools] = useState<ToolItem[]>(MOCK_TOOLS);
+  const [consumables, setConsumables] = useState<LabConsumable[]>(MOCK_CONSUMABLES);
+  const [analyses, setAnalyses] = useState<ItemAnalysis[]>(MOCK_ITEM_ANALYSIS);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Initial Data Load
@@ -33,23 +41,39 @@ const App: React.FC = () => {
           fetch('/api/inventory?type=consumables')
         ]);
 
+        // Helper to check if response is valid JSON
+        const safeJson = async (res: Response) => {
+          if (!res.ok) return null;
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.indexOf("application/json") !== -1) {
+            return res.json();
+          }
+          return null;
+        };
+
         const [dataTeachers, dataTasks, dataTools, dataConsumables] = await Promise.all([
-          resTeachers.json(),
-          resTasks.json(),
-          resTools.json(),
-          resConsumables.json()
+          safeJson(resTeachers),
+          safeJson(resTasks),
+          safeJson(resTools),
+          safeJson(resConsumables)
         ]);
 
-        setTeachers(dataTeachers);
-        setTasks(dataTasks);
-        setTools(dataTools);
-        setConsumables(dataConsumables);
+        if (dataTeachers) {
+          setTeachers(dataTeachers);
+          setDbConnected(true);
+        }
+        if (dataTasks) setTasks(dataTasks);
+        if (dataTools) setTools(dataTools);
+        if (dataConsumables) setConsumables(dataConsumables);
         
         // Smart Notifications via Gemini
-        const alerts = await analyzeNotifications(dataConsumables, dataTasks);
+        const currentConsumables = dataConsumables || MOCK_CONSUMABLES;
+        const currentTasks = dataTasks || MOCK_TASKS;
+        const alerts = await analyzeNotifications(currentConsumables, currentTasks);
         setNotifications(alerts);
       } catch (error) {
-        console.error("Database connection failed. Ensure your Vercel/Neon env variables are set.", error);
+        console.warn("Database sync unavailable. Using offline mock data.", error);
+        setDbConnected(false);
       } finally {
         setIsLoading(false);
       }
@@ -57,22 +81,23 @@ const App: React.FC = () => {
     loadAllData();
   }, []);
 
-  // Handler Functions with DB Persistence
+  // Handler Functions with DB Persistence + Local Fallback
   const handleToggleTask = async (id: string) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newStatus = task.status === 'Pending' ? 'Done' : 'Pending';
     
+    // Update locally first for snappy UI
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+
     try {
-      const res = await fetch(`/api/tasks?id=${id}`, {
+      await fetch(`/api/tasks?id=${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
-      const updatedTask = await res.json();
-      setTasks(prev => prev.map(t => t.id === id ? updatedTask : t));
     } catch (e) {
-      alert("Failed to update task status.");
+      console.error("Failed to sync task update to DB");
     }
   };
 
@@ -81,54 +106,56 @@ const App: React.FC = () => {
     if (!item) return;
     const newQty = Math.max(0, item.quantity + amount);
 
+    setConsumables(prev => prev.map(c => c.id === id ? { ...c, quantity: newQty } : c));
+
     try {
-      const res = await fetch(`/api/inventory?type=consumables&id=${id}`, {
+      await fetch(`/api/inventory?type=consumables&id=${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quantity: newQty })
       });
-      const updated = await res.json();
-      setConsumables(prev => prev.map(c => c.id === id ? updated : c));
     } catch (e) {
-      alert("Failed to update inventory.");
+      console.error("Failed to sync inventory update");
     }
   };
 
   const handleUpdateTool = async (id: string, condition: ToolItem['condition']) => {
+    setTools(prev => prev.map(t => t.id === id ? { ...t, condition } : t));
     try {
-      const res = await fetch(`/api/inventory?type=tools&id=${id}`, {
+      await fetch(`/api/inventory?type=tools&id=${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ condition })
       });
-      const updated = await res.json();
-      setTools(prev => prev.map(t => t.id === id ? updated : t));
     } catch (e) {
-      alert("Failed to update tool condition.");
+      console.error("Failed to sync tool update");
     }
   };
 
   const handleAddTeacher = async (newTeacher: Teacher) => {
+    setTeachers(prev => [newTeacher, ...prev]);
     try {
       const res = await fetch('/api/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTeacher)
       });
-      const savedTeacher = await res.json();
-      setTeachers(prev => [savedTeacher, ...prev]);
+      if (res.ok) {
+        const savedTeacher = await res.json();
+        setTeachers(prev => prev.map(t => t.id === newTeacher.id ? savedTeacher : t));
+      }
     } catch (e) {
-      alert("Failed to save teacher profile.");
+      console.error("Failed to sync new teacher to DB");
     }
   };
 
   const handleDeleteTeacher = async (id: string) => {
-    if(window.confirm("Permanently delete this teacher profile from the database?")) {
+    if(window.confirm("Permanently delete this teacher profile?")) {
+      setTeachers(prev => prev.filter(t => t.id !== id));
       try {
         await fetch(`/api/teachers?id=${id}`, { method: 'DELETE' });
-        setTeachers(prev => prev.filter(t => t.id !== id));
       } catch (e) {
-        alert("Failed to delete record.");
+        console.error("Failed to delete from DB");
       }
     }
   };
@@ -147,7 +174,7 @@ const App: React.FC = () => {
       }))
     };
     setAnalyses(prev => [newAnalysis, ...prev]);
-    alert("New Item Analysis record pushed to temporary storage (Simulated).");
+    alert("Simulation complete: New report added to current session.");
   };
 
   if (isLoading) {
@@ -155,7 +182,7 @@ const App: React.FC = () => {
       <div className="h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-500 font-medium">Syncing with Neon Database...</p>
+          <p className="mt-4 text-gray-500 font-medium">Initializing School Admin Suite...</p>
         </div>
       </div>
     );
@@ -171,7 +198,9 @@ const App: React.FC = () => {
         return (
           <div className="bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
             <h3 className="text-2xl font-bold text-gray-800 mb-4">Item Analysis Engine</h3>
-            <p className="text-gray-500 mb-8 max-w-lg mx-auto">Connected to Cloud Processing. Upload periodical test results to generate mastery charts instantly.</p>
+            <p className="text-gray-500 mb-8 max-w-lg mx-auto">
+              {dbConnected ? 'Cloud Sync Active.' : 'Cloud Sync Offline (Using Local Mode).'} Upload periodical test results to generate mastery charts instantly.
+            </p>
             <div className="flex justify-center space-x-4">
               <button 
                 onClick={handleUploadSimulation}
@@ -182,18 +211,22 @@ const App: React.FC = () => {
             </div>
             <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
               <div className="p-6 border border-gray-100 rounded-lg">
-                <h4 className="font-bold text-gray-800 mb-4 uppercase text-xs tracking-widest text-indigo-600">Sync History</h4>
+                <h4 className="font-bold text-gray-800 mb-4 uppercase text-xs tracking-widest text-indigo-600">History</h4>
                 <ul className="space-y-3">
                   {analyses.map(a => (
                     <li key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 group">
                       <span className="text-sm text-gray-700 font-bold">Grade {a.gradeLevel} - Q{a.quarter} Analysis</span>
-                      <button className="text-[10px] bg-white border border-gray-200 px-2 py-1 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">Cloud PDF</button>
+                      <button className="text-[10px] bg-white border border-gray-200 px-2 py-1 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">View PDF</button>
                     </li>
                   ))}
                 </ul>
               </div>
               <div className="p-6 border border-gray-100 rounded-lg bg-indigo-50 flex items-center justify-center">
-                <p className="text-xs text-indigo-700 italic font-medium">"Neon DB ensures your educational data is persistent and scalable. All uploaded analyses are secured."</p>
+                <p className="text-xs text-indigo-700 italic font-medium text-center">
+                  {dbConnected 
+                    ? "Neon DB is connected. All records are persistent." 
+                    : "Note: DB connection missing. Changes will only persist in the current browser session."}
+                </p>
               </div>
             </div>
           </div>
