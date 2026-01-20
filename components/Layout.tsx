@@ -18,6 +18,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
     { id: 'inventory', label: 'Inventory', icon: Icons.Inventory },
     { id: 'tasks', label: 'Task Module', icon: Icons.Tasks },
     { id: 'proposal', label: 'Innovation Proposal', icon: Icons.Proposal },
+    { id: 'sql-editor', label: 'SQL Console', icon: Icons.Sql },
   ];
 
   return (
