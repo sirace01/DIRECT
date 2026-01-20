@@ -56,11 +56,14 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
     e.preventDefault();
     setIsSaving(true);
     try {
+      // Ensure numeric values are numbers
       const newTeacher: Teacher = {
         ...formData as Teacher,
+        yearsTeachingSubject: Number(formData.yearsTeachingSubject) || 0,
+        yearsInService: Number(formData.yearsInService) || 0,
         tesdaQualifications: formData.tesdaQualifications || []
       };
-      // Note: Backend ignores ID for SERIAL columns
+      
       await onAdd(newTeacher);
       setIsModalOpen(false);
       setFormData({
@@ -81,7 +84,7 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
       });
       alert("Teacher profile added successfully!");
     } catch (err) {
-      // Error handled in App.tsx alert
+      console.error("Submission failed:", err);
     } finally {
       setIsSaving(false);
     }
@@ -94,7 +97,7 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
           <input
             type="text"
             placeholder="Search registry..."
-            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -174,7 +177,7 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Yrs Teaching Subject</label>
-                    <input required type="number" className="w-full border rounded-lg p-2 text-sm" value={formData.yearsTeachingSubject} onChange={e => setFormData({...formData, yearsTeachingSubject: parseInt(e.target.value)})} />
+                    <input required type="number" className="w-full border rounded-lg p-2 text-sm" value={formData.yearsTeachingSubject} onChange={e => setFormData({...formData, yearsTeachingSubject: Number(e.target.value)})} />
                   </div>
                 </div>
               </div>
@@ -260,8 +263,7 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white group-hover:bg-indigo-50/30 z-10 border-l border-gray-50">
                     <div className="flex items-center justify-end space-x-3">
-                      <button onClick={() => alert("Edit mode functional via SQL Console in v1.0")} className="text-indigo-600 font-bold">Edit</button>
-                      <button onClick={() => onDelete(t.id)} className="text-red-400 hover:text-red-600">Delete</button>
+                      <button onClick={() => onDelete(t.id)} className="text-red-400 hover:text-red-600 font-bold transition-colors">Delete</button>
                     </div>
                   </td>
                 </tr>

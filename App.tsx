@@ -90,32 +90,31 @@ const App: React.FC = () => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newStatus = task.status === 'Pending' ? 'Done' : 'Pending';
+    
+    // Optimistic Update
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+    
     try {
-      await fetch(`/api/tasks?id=${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-    } catch (e) { console.error("Sync Error:", e); }
+      await sql`UPDATE tasks SET status = ${newStatus} WHERE id = ${id}`;
+    } catch (e) { 
+      console.error("Sync Error:", e);
+      // Revert on failure
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: task.status } : t));
+    }
   };
 
   const handleAddTask = async (taskData: Partial<Task>) => {
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(taskData)
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setTasks(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
-      } else {
-        const errData = await res.json();
-        throw new Error(errData.error || "Save failed");
-      }
-    } catch (e) {
+      const result = await sql`
+        INSERT INTO tasks ("title", "assignedTo", "deadline", "status")
+        VALUES (${taskData.title}, ${taskData.assignedTo}, ${taskData.deadline}, 'Pending')
+        RETURNING *`;
+      
+      const saved = result[0];
+      setTasks(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
+    } catch (e: any) {
       console.error("Save Task Error:", e);
+      alert("Error saving task: " + e.message);
       throw e;
     }
   };
@@ -124,41 +123,49 @@ const App: React.FC = () => {
     const item = consumables.find(c => c.id === id);
     if (!item) return;
     const newQty = Math.max(0, item.quantity + amount);
+    
+    // Optimistic Update
     setConsumables(prev => prev.map(c => c.id === id ? { ...c, quantity: newQty } : c));
+    
     try {
-      await fetch(`/api/inventory?type=consumables&id=${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: newQty })
-      });
-    } catch (e) { console.error("Sync Error:", e); }
+      await sql`UPDATE consumables SET "quantity" = ${newQty} WHERE id = ${id}`;
+    } catch (e) { 
+      console.error("Sync Error:", e);
+      setConsumables(prev => prev.map(c => c.id === id ? { ...c, quantity: item.quantity } : c));
+    }
   };
 
   const handleUpdateTool = async (id: string, condition: ToolItem['condition']) => {
+    const tool = tools.find(t => t.id === id);
+    if (!tool) return;
+    const oldCondition = tool.condition;
+    
+    // Optimistic Update
     setTools(prev => prev.map(t => t.id === id ? { ...t, condition } : t));
+    
     try {
-      await fetch(`/api/inventory?type=tools&id=${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ condition })
-      });
-    } catch (e) { console.error("Sync Error:", e); }
+      await sql`UPDATE tools SET "condition" = ${condition} WHERE id = ${id}`;
+    } catch (e) { 
+      console.error("Sync Error:", e);
+      setTools(prev => prev.map(t => t.id === id ? { ...t, condition: oldCondition } : t));
+    }
   };
 
-  const handleAddTeacher = async (newTeacher: Teacher) => {
+  const handleAddTeacher = async (t: Teacher) => {
     try {
-      const res = await fetch('/api/teachers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTeacher)
-      });
-      if (res.ok) {
-        const savedTeacher = await res.json();
-        setTeachers(prev => [ { ...savedTeacher, id: String(savedTeacher.id) }, ...prev]);
-      } else {
-        const errData = await res.json();
-        throw new Error(errData.error || "Failed to save to database");
-      }
+      const result = await sql`
+        INSERT INTO teachers (
+          "firstName", "middleName", "lastName", "suffix", "empNo", 
+          "contact", "address", "dob", "subjectTaught", "yearsTeachingSubject", 
+          "tesdaQualifications", "position", "educationBS", "educationMA", "educationPhD", "yearsInService"
+        ) VALUES (
+          ${t.firstName}, ${t.middleName}, ${t.lastName}, ${t.suffix}, ${t.empNo},
+          ${t.contact}, ${t.address}, ${t.dob}, ${t.subjectTaught}, ${t.yearsTeachingSubject},
+          ${t.tesdaQualifications || []}, ${t.position}, ${t.educationBS}, ${t.educationMA}, ${t.educationPhD}, ${t.yearsInService}
+        ) RETURNING *`;
+      
+      const saved = result[0];
+      setTeachers(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
     } catch (e: any) {
       console.error("Sync Error:", e);
       alert("Error saving teacher: " + e.message);
@@ -169,44 +176,35 @@ const App: React.FC = () => {
   const handleDeleteTeacher = async (id: string) => {
     if(window.confirm("Permanently delete this teacher profile?")) {
       try {
-        const res = await fetch(`/api/teachers?id=${id}`, { method: 'DELETE' });
-        if (res.ok) {
-          setTeachers(prev => prev.filter(t => t.id !== id));
-        }
+        await sql`DELETE FROM teachers WHERE id = ${id}`;
+        setTeachers(prev => prev.filter(t => t.id !== id));
       } catch (e) { console.error("Sync Error:", e); }
     }
   };
 
   const handleUploadSimulation = async () => {
-    const simulationData = {
-      gradeLevel: Math.floor(Math.random() * 6) + 7,
-      specialization: 'TVL - ICT',
-      quarter: (Math.floor(Math.random() * 4) + 1) as 1 | 2 | 3 | 4,
-      totalQuestions: 10,
-      responses: Array.from({ length: 10 }, (_, i) => ({
-        questionNo: i + 1,
-        correctCount: Math.floor(Math.random() * 40) + 10,
-        totalExaminees: 50
-      }))
-    };
+    const responses = Array.from({ length: 10 }, (_, i) => ({
+      questionNo: i + 1,
+      correctCount: Math.floor(Math.random() * 40) + 10,
+      totalExaminees: 50
+    }));
 
     try {
-      const res = await fetch('/api/analyses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(simulationData)
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setAnalyses(prev => [{ 
-          ...saved, 
-          id: String(saved.id),
-          responses: typeof saved.responses === 'string' ? JSON.parse(saved.responses) : saved.responses
-        }, ...prev]);
-        alert("Simulation report generated and saved to Neon!");
-      }
-    } catch (e) {
+      const result = await sql`
+        INSERT INTO analyses ("gradeLevel", "specialization", "quarter", "totalQuestions", "responses")
+        VALUES (${7 + Math.floor(Math.random()*6)}, 'TVL - ICT', ${Math.floor(Math.random()*4)+1}, 10, ${JSON.stringify(responses)})
+        RETURNING *`;
+      
+      const saved = result[0];
+      setAnalyses(prev => [{ 
+        ...saved, 
+        id: String(saved.id),
+        responses: typeof saved.responses === 'string' ? JSON.parse(saved.responses) : saved.responses
+      }, ...prev]);
+      alert("Simulation report generated and saved to Neon!");
+    } catch (e: any) {
       console.error("Simulation Error:", e);
+      alert("Failed to save analysis: " + e.message);
     }
   };
 
@@ -221,7 +219,7 @@ const App: React.FC = () => {
           <div className="bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
             <h3 className="text-2xl font-bold text-gray-800 mb-4">Item Analysis Engine</h3>
             <p className="text-gray-500 mb-8 max-w-lg mx-auto">
-              Direct Database Connection Active. Data is fetched directly from your Neon PostgreSQL cluster.
+              Direct Database Connection Active. Data is synchronized directly with your Neon Cloud PostgreSQL instance.
             </p>
             <div className="flex justify-center space-x-4">
               <button onClick={handleUploadSimulation} className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg">
