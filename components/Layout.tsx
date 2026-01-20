@@ -15,7 +15,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard },
     { id: 'teachers', label: 'Teacher Profiles', icon: Icons.Teachers },
     { id: 'analysis', label: 'Item Analysis', icon: Icons.ItemAnalysis },
-    { id: 'inventory', label: 'Inventory', icon: Icons.Inventory },
+    { id: 'inventory', label: 'Lab Inventory', icon: Icons.Inventory },
     { id: 'tasks', label: 'Task Module', icon: Icons.Tasks },
     { id: 'proposal', label: 'Innovation Proposal', icon: Icons.Proposal },
     { id: 'sql-editor', label: 'SQL Console', icon: Icons.Sql },
@@ -43,7 +43,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
                 }`}
               >
                 <item.icon />
-                <span className="font-medium">{item.label}</span>
+                <span className="font-medium text-left">{item.label}</span>
               </button>
             ))}
           </nav>

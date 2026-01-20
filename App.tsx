@@ -9,7 +9,7 @@ import ProposalView from './components/ProposalView';
 import SQLEditor from './components/SQLEditor';
 import { analyzeNotifications } from './services/geminiService';
 import { sql, getDatabaseUrl, setDatabaseUrl } from './api/db';
-import { Notification, UserRole, Teacher, Task, ToolItem, LabConsumable, ItemAnalysis } from './types';
+import { Notification, UserRole, Teacher, Task, ToolItem, LabConsumable, ItemAnalysis, Laboratory } from './types';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -23,6 +23,7 @@ const App: React.FC = () => {
   // State Management
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [laboratories, setLaboratories] = useState<Laboratory[]>([]);
   const [tools, setTools] = useState<ToolItem[]>([]);
   const [consumables, setConsumables] = useState<LabConsumable[]>([]);
   const [analyses, setAnalyses] = useState<ItemAnalysis[]>([]);
@@ -41,23 +42,25 @@ const App: React.FC = () => {
     setSetupMode(false);
     
     try {
-      const [dbTeachers, dbTasks, dbTools, dbConsumables, dbAnalyses] = await Promise.all([
+      const [dbTeachers, dbTasks, dbTools, dbConsumables, dbAnalyses, dbLabs] = await Promise.all([
         sql`SELECT * FROM teachers ORDER BY "lastName" ASC`,
         sql`SELECT * FROM tasks ORDER BY deadline ASC`,
         sql`SELECT * FROM tools ORDER BY name ASC`,
         sql`SELECT * FROM consumables ORDER BY name ASC`,
-        sql`SELECT * FROM analyses ORDER BY created_at DESC`
+        sql`SELECT * FROM analyses ORDER BY created_at DESC`,
+        sql`SELECT * FROM laboratories ORDER BY name ASC`
       ]);
 
       setTeachers(dbTeachers.map((t: any) => ({ ...t, id: String(t.id) })) as Teacher[]);
       setTasks(dbTasks.map((t: any) => ({ ...t, id: String(t.id) })) as Task[]);
-      setTools(dbTools.map((t: any) => ({ ...t, id: String(t.id) })) as ToolItem[]);
-      setConsumables(dbConsumables.map((c: any) => ({ ...c, id: String(c.id) })) as LabConsumable[]);
+      setTools(dbTools.map((t: any) => ({ ...t, id: String(t.id), labId: String(t.labId) })) as ToolItem[]);
+      setConsumables(dbConsumables.map((c: any) => ({ ...c, id: String(c.id), labId: String(c.labId) })) as LabConsumable[]);
       setAnalyses(dbAnalyses.map((a: any) => ({ 
         ...a, 
         id: String(a.id),
         responses: typeof a.responses === 'string' ? JSON.parse(a.responses) : a.responses
       })) as ItemAnalysis[]);
+      setLaboratories(dbLabs.map((l: any) => ({ ...l, id: String(l.id) })) as Laboratory[]);
       
       setDbConnected(true);
       const alerts = await analyzeNotifications(dbConsumables, dbTasks);
@@ -74,17 +77,6 @@ const App: React.FC = () => {
   useEffect(() => {
     loadAllData();
   }, []);
-
-  const handleSaveConnection = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUrl = tempUrl.trim();
-    if (!cleanUrl.startsWith('postgres://') && !cleanUrl.startsWith('postgresql://')) {
-      setError("Invalid Protocol. Connection string must start with 'postgres://' or 'postgresql://'");
-      return;
-    }
-    setDatabaseUrl(cleanUrl);
-    window.location.reload(); 
-  };
 
   const handleToggleTask = async (id: string) => {
     const task = tasks.find(t => t.id === id);
@@ -114,14 +106,27 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddLab = async (lab: Partial<Laboratory>) => {
+    try {
+      const result = await sql`
+        INSERT INTO laboratories ("name", "building", "floor", "condition", "status")
+        VALUES (${lab.name}, ${lab.building}, ${lab.floor}, ${lab.condition || 'Functional'}, ${lab.status || 'Available'})
+        RETURNING *`;
+      const saved = result[0];
+      setLaboratories(prev => [...prev, { ...saved, id: String(saved.id) }]);
+    } catch (e: any) {
+      alert("Error adding lab: " + e.message);
+    }
+  };
+
   const handleAddTool = async (tool: Partial<ToolItem>) => {
     try {
       const result = await sql`
-        INSERT INTO tools ("name", "serialNumber", "condition")
-        VALUES (${tool.name}, ${tool.serialNumber}, ${tool.condition || 'Good'})
+        INSERT INTO tools ("labId", "name", "serialNumber", "condition")
+        VALUES (${Number(tool.labId)}, ${tool.name}, ${tool.serialNumber}, ${tool.condition || 'Good'})
         RETURNING *`;
       const saved = result[0];
-      setTools(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
+      setTools(prev => [{ ...saved, id: String(saved.id), labId: String(saved.labId) }, ...prev]);
     } catch (e: any) {
       console.error("Add Tool Error:", e);
       alert("Error adding tool: " + e.message);
@@ -132,11 +137,11 @@ const App: React.FC = () => {
   const handleAddConsumable = async (item: Partial<LabConsumable>) => {
     try {
       const result = await sql`
-        INSERT INTO consumables ("name", "quantity", "unit", "expiryDate", "location")
-        VALUES (${item.name}, ${Number(item.quantity) || 0}, ${item.unit}, ${item.expiryDate}, ${item.location})
+        INSERT INTO consumables ("labId", "name", "quantity", "unit", "expiryDate", "location")
+        VALUES (${Number(item.labId)}, ${item.name}, ${Number(item.quantity) || 0}, ${item.unit}, ${item.expiryDate}, ${item.location})
         RETURNING *`;
       const saved = result[0];
-      setConsumables(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
+      setConsumables(prev => [{ ...saved, id: String(saved.id), labId: String(saved.labId) }, ...prev]);
     } catch (e: any) {
       console.error("Add Consumable Error:", e);
       alert("Error adding consumable: " + e.message);
@@ -268,12 +273,14 @@ const App: React.FC = () => {
       case 'inventory':
         return (
           <InventoryModule 
+            laboratories={laboratories}
             tools={tools} 
             consumables={consumables} 
             onToolUpdate={handleUpdateTool} 
             onConsumableUpdate={handleUpdateConsumable}
             onAddTool={handleAddTool}
             onAddConsumable={handleAddConsumable}
+            onAddLab={handleAddLab}
           />
         );
       case 'tasks':

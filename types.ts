@@ -1,6 +1,15 @@
 
 export type UserRole = 'ADMIN' | 'TEACHER';
 
+export interface Laboratory {
+  id: string;
+  name: string;
+  building: string;
+  floor: string;
+  condition: 'Functional' | 'Maintenance' | 'Closed';
+  status: 'Available' | 'Occupied' | 'Reserved';
+}
+
 export interface Teacher {
   id: string;
   firstName: string;
@@ -36,6 +45,7 @@ export interface ItemAnalysis {
 
 export interface ToolItem {
   id: string;
+  labId: string;
   name: string;
   serialNumber: string;
   condition: 'Good' | 'Fair' | 'Defective' | 'Under Maintenance';
@@ -45,6 +55,7 @@ export interface ToolItem {
 
 export interface LabConsumable {
   id: string;
+  labId: string;
   name: string;
   quantity: number;
   unit: string;
