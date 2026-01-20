@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { sql } from '../api/db';
 
 const SQLEditor: React.FC = () => {
   const [query, setQuery] = useState('SELECT * FROM teachers LIMIT 10;');
@@ -15,21 +16,15 @@ const SQLEditor: React.FC = () => {
     const queryToRun = customQuery || query;
 
     try {
-      const response = await fetch('/api/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryToRun }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw data;
-      }
-
+      // Direct Database call using the utility
+      const data = await sql(queryToRun);
       setResults(Array.isArray(data) ? data : [data]);
     } catch (err: any) {
-      setError(err);
+      console.error("SQL Execution Error:", err);
+      setError({
+        code: err.code || 'SQL_ERROR',
+        message: err.message || 'An unknown error occurred during execution.'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +46,7 @@ const SQLEditor: React.FC = () => {
             <div className="w-3 h-3 rounded-full bg-red-400"></div>
             <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
             <div className="w-3 h-3 rounded-full bg-green-400"></div>
-            <span className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-widest">PostgreSQL Terminal</span>
+            <span className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-widest">PostgreSQL Cloud Terminal</span>
           </div>
           <div className="flex space-x-2">
             {quickTables.map((t) => (
@@ -73,7 +68,7 @@ const SQLEditor: React.FC = () => {
           <textarea
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full h-48 p-6 bg-slate-900 text-indigo-300 font-mono text-sm border-none focus:ring-0 resize-none"
+            className="w-full h-48 p-6 bg-slate-900 text-indigo-300 font-mono text-sm border-none focus:ring-0 resize-none outline-none"
             spellCheck={false}
           />
           <button
@@ -85,7 +80,7 @@ const SQLEditor: React.FC = () => {
                 : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
             }`}
           >
-            {isLoading ? 'Executing...' : 'Run Query (F5)'}
+            {isLoading ? 'Executing...' : 'Run Query'}
           </button>
         </div>
       </div>
@@ -98,7 +93,7 @@ const SQLEditor: React.FC = () => {
             </svg>
             <h4 className="text-red-800 font-bold uppercase text-xs tracking-widest">Query Error: {error.code}</h4>
           </div>
-          <p className="text-sm text-red-700 font-mono">{error.error || error.message}</p>
+          <p className="text-sm text-red-700 font-mono">{error.message}</p>
         </div>
       )}
 
@@ -106,7 +101,7 @@ const SQLEditor: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-4 border-b border-gray-100 flex justify-between items-center">
             <h4 className="text-sm font-bold text-gray-700">Results ({results.length} rows)</h4>
-            <span className="text-[10px] font-bold text-gray-400 uppercase">JSON Export Available in Console</span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase">Live Database Output</span>
           </div>
           <div className="overflow-x-auto max-h-[500px]">
             <table className="min-w-full divide-y divide-gray-200">

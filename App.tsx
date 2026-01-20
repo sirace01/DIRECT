@@ -90,15 +90,11 @@ const App: React.FC = () => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newStatus = task.status === 'Pending' ? 'Done' : 'Pending';
-    
-    // Optimistic Update
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
-    
     try {
-      await sql`UPDATE tasks SET status = ${newStatus} WHERE id = ${id}`;
+      await sql`UPDATE tasks SET status = ${newStatus} WHERE id = ${Number(id)}`;
     } catch (e) { 
       console.error("Sync Error:", e);
-      // Revert on failure
       setTasks(prev => prev.map(t => t.id === id ? { ...t, status: task.status } : t));
     }
   };
@@ -109,7 +105,6 @@ const App: React.FC = () => {
         INSERT INTO tasks ("title", "assignedTo", "deadline", "status")
         VALUES (${taskData.title}, ${taskData.assignedTo}, ${taskData.deadline}, 'Pending')
         RETURNING *`;
-      
       const saved = result[0];
       setTasks(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
     } catch (e: any) {
@@ -119,16 +114,43 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddTool = async (tool: Partial<ToolItem>) => {
+    try {
+      const result = await sql`
+        INSERT INTO tools ("name", "serialNumber", "condition")
+        VALUES (${tool.name}, ${tool.serialNumber}, ${tool.condition || 'Good'})
+        RETURNING *`;
+      const saved = result[0];
+      setTools(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
+    } catch (e: any) {
+      console.error("Add Tool Error:", e);
+      alert("Error adding tool: " + e.message);
+      throw e;
+    }
+  };
+
+  const handleAddConsumable = async (item: Partial<LabConsumable>) => {
+    try {
+      const result = await sql`
+        INSERT INTO consumables ("name", "quantity", "unit", "expiryDate", "location")
+        VALUES (${item.name}, ${Number(item.quantity) || 0}, ${item.unit}, ${item.expiryDate}, ${item.location})
+        RETURNING *`;
+      const saved = result[0];
+      setConsumables(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
+    } catch (e: any) {
+      console.error("Add Consumable Error:", e);
+      alert("Error adding consumable: " + e.message);
+      throw e;
+    }
+  };
+
   const handleUpdateConsumable = async (id: string, amount: number) => {
     const item = consumables.find(c => c.id === id);
     if (!item) return;
     const newQty = Math.max(0, item.quantity + amount);
-    
-    // Optimistic Update
     setConsumables(prev => prev.map(c => c.id === id ? { ...c, quantity: newQty } : c));
-    
     try {
-      await sql`UPDATE consumables SET "quantity" = ${newQty} WHERE id = ${id}`;
+      await sql`UPDATE consumables SET "quantity" = ${newQty} WHERE id = ${Number(id)}`;
     } catch (e) { 
       console.error("Sync Error:", e);
       setConsumables(prev => prev.map(c => c.id === id ? { ...c, quantity: item.quantity } : c));
@@ -138,16 +160,12 @@ const App: React.FC = () => {
   const handleUpdateTool = async (id: string, condition: ToolItem['condition']) => {
     const tool = tools.find(t => t.id === id);
     if (!tool) return;
-    const oldCondition = tool.condition;
-    
-    // Optimistic Update
     setTools(prev => prev.map(t => t.id === id ? { ...t, condition } : t));
-    
     try {
-      await sql`UPDATE tools SET "condition" = ${condition} WHERE id = ${id}`;
+      await sql`UPDATE tools SET "condition" = ${condition} WHERE id = ${Number(id)}`;
     } catch (e) { 
       console.error("Sync Error:", e);
-      setTools(prev => prev.map(t => t.id === id ? { ...t, condition: oldCondition } : t));
+      setTools(prev => prev.map(t => t.id === id ? { ...t, condition: tool.condition } : t));
     }
   };
 
@@ -163,7 +181,6 @@ const App: React.FC = () => {
           ${t.contact}, ${t.address}, ${t.dob}, ${t.subjectTaught}, ${t.yearsTeachingSubject},
           ${t.tesdaQualifications || []}, ${t.position}, ${t.educationBS}, ${t.educationMA}, ${t.educationPhD}, ${t.yearsInService}
         ) RETURNING *`;
-      
       const saved = result[0];
       setTeachers(prev => [{ ...saved, id: String(saved.id) }, ...prev]);
     } catch (e: any) {
@@ -176,7 +193,7 @@ const App: React.FC = () => {
   const handleDeleteTeacher = async (id: string) => {
     if(window.confirm("Permanently delete this teacher profile?")) {
       try {
-        await sql`DELETE FROM teachers WHERE id = ${id}`;
+        await sql`DELETE FROM teachers WHERE id = ${Number(id)}`;
         setTeachers(prev => prev.filter(t => t.id !== id));
       } catch (e) { console.error("Sync Error:", e); }
     }
@@ -194,7 +211,6 @@ const App: React.FC = () => {
         INSERT INTO analyses ("gradeLevel", "specialization", "quarter", "totalQuestions", "responses")
         VALUES (${7 + Math.floor(Math.random()*6)}, 'TVL - ICT', ${Math.floor(Math.random()*4)+1}, 10, ${JSON.stringify(responses)})
         RETURNING *`;
-      
       const saved = result[0];
       setAnalyses(prev => [{ 
         ...saved, 
@@ -250,7 +266,16 @@ const App: React.FC = () => {
           </div>
         );
       case 'inventory':
-        return <InventoryModule tools={tools} consumables={consumables} onToolUpdate={handleUpdateTool} onConsumableUpdate={handleUpdateConsumable} />;
+        return (
+          <InventoryModule 
+            tools={tools} 
+            consumables={consumables} 
+            onToolUpdate={handleUpdateTool} 
+            onConsumableUpdate={handleUpdateConsumable}
+            onAddTool={handleAddTool}
+            onAddConsumable={handleAddConsumable}
+          />
+        );
       case 'tasks':
         return <TaskModule tasks={tasks} onAdd={handleAddTask} onToggle={handleToggleTask} />;
       case 'proposal':
