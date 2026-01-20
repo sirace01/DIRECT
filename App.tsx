@@ -49,11 +49,12 @@ const App: React.FC = () => {
         sql`SELECT * FROM analyses ORDER BY created_at DESC`
       ]);
 
-      setTeachers(dbTeachers.map(t => ({ ...t, id: String(t.id) })) as Teacher[]);
-      setTasks(dbTasks.map(t => ({ ...t, id: String(t.id) })) as Task[]);
-      setTools(dbTools.map(t => ({ ...t, id: String(t.id) })) as ToolItem[]);
-      setConsumables(dbConsumables.map(c => ({ ...c, id: String(c.id) })) as LabConsumable[]);
-      setAnalyses(dbAnalyses.map(a => ({ 
+      // Added explicit :any types to map parameters to fix TS7006 build errors
+      setTeachers(dbTeachers.map((t: any) => ({ ...t, id: String(t.id) })) as Teacher[]);
+      setTasks(dbTasks.map((t: any) => ({ ...t, id: String(t.id) })) as Task[]);
+      setTools(dbTools.map((t: any) => ({ ...t, id: String(t.id) })) as ToolItem[]);
+      setConsumables(dbConsumables.map((c: any) => ({ ...c, id: String(c.id) })) as LabConsumable[]);
+      setAnalyses(dbAnalyses.map((a: any) => ({ 
         ...a, 
         id: String(a.id),
         responses: typeof a.responses === 'string' ? JSON.parse(a.responses) : a.responses
