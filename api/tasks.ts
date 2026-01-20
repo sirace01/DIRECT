@@ -8,6 +8,17 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json(data);
     }
 
+    if (req.method === 'POST') {
+      const { title, assignedTo, deadline } = req.body;
+      if (!title) return res.status(400).json({ error: "Title is required" });
+      
+      const result = await sql`
+        INSERT INTO tasks ("title", "assignedTo", "deadline", "status")
+        VALUES (${title}, ${assignedTo}, ${deadline}, 'Pending')
+        RETURNING *`;
+      return res.status(201).json(result[0]);
+    }
+
     if (req.method === 'PATCH') {
       const { id } = req.query;
       const { status } = req.body;
@@ -17,6 +28,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
+    console.error("API Error [Tasks]:", error);
     return res.status(500).json({ error: error.message });
   }
 }

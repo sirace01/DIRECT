@@ -4,19 +4,20 @@ import { Teacher } from '../types';
 
 interface TeacherModuleProps {
   teachers: Teacher[];
-  onAdd: (teacher: Teacher) => void;
+  onAdd: (teacher: Teacher) => Promise<void>;
   onDelete: (id: string) => void;
 }
 
 const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Teacher>>({
     firstName: '',
     middleName: '',
     lastName: '',
     suffix: '',
-    empNo: `EMP-${new Date().getFullYear()}-${Math.floor(Math.random() * 999)}`,
+    empNo: `EMP-${new Date().getFullYear()}-${Math.floor(Math.random() * 9999)}`,
     dob: '1990-01-01',
     subjectTaught: '',
     yearsTeachingSubject: 1,
@@ -51,16 +52,39 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
            t.empNo.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newTeacher: Teacher = {
-      ...formData as Teacher,
-      id: Date.now().toString(),
-      tesdaQualifications: formData.tesdaQualifications || []
-    };
-    onAdd(newTeacher);
-    setIsModalOpen(false);
-    alert("Teacher profile added successfully!");
+    setIsSaving(true);
+    try {
+      const newTeacher: Teacher = {
+        ...formData as Teacher,
+        tesdaQualifications: formData.tesdaQualifications || []
+      };
+      // Note: Backend ignores ID for SERIAL columns
+      await onAdd(newTeacher);
+      setIsModalOpen(false);
+      setFormData({
+        firstName: '',
+        middleName: '',
+        lastName: '',
+        suffix: '',
+        empNo: `EMP-${new Date().getFullYear()}-${Math.floor(Math.random() * 9999)}`,
+        dob: '1990-01-01',
+        subjectTaught: '',
+        yearsTeachingSubject: 1,
+        tesdaQualifications: [],
+        position: 'Teacher I',
+        educationBS: '',
+        yearsInService: 1,
+        contact: '',
+        address: ''
+      });
+      alert("Teacher profile added successfully!");
+    } catch (err) {
+      // Error handled in App.tsx alert
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -87,7 +111,6 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
         </button>
       </div>
 
-      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-8 my-8">
@@ -97,7 +120,6 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
             </div>
             
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Personal Data */}
               <div className="space-y-4 md:col-span-3">
                 <h4 className="text-xs font-black uppercase text-indigo-600 tracking-widest border-b pb-1">Personal Information</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -135,7 +157,6 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
                 </div>
               </div>
 
-              {/* Professional Data */}
               <div className="space-y-4 md:col-span-3">
                 <h4 className="text-xs font-black uppercase text-indigo-600 tracking-widest border-b pb-1">Employment & Expertise</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -158,7 +179,6 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
                 </div>
               </div>
 
-              {/* Education */}
               <div className="space-y-4 md:col-span-3">
                 <h4 className="text-xs font-black uppercase text-indigo-600 tracking-widest border-b pb-1">Educational Attainment</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -178,15 +198,26 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
               </div>
 
               <div className="md:col-span-3 flex justify-end space-x-3 mt-4 border-t pt-6">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
-                <button type="submit" className="px-10 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-lg hover:bg-indigo-700">Save Profile</button>
+                <button 
+                  type="button" 
+                  onClick={() => setIsModalOpen(false)} 
+                  className="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSaving}
+                  className="px-10 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-lg hover:bg-indigo-700 disabled:bg-gray-400"
+                >
+                  {isSaving ? 'Syncing...' : 'Save Profile'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Main Table */}
       <div className="bg-white shadow-xl border border-gray-100 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -229,7 +260,7 @@ const TeacherModule: React.FC<TeacherModuleProps> = ({ teachers, onAdd, onDelete
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white group-hover:bg-indigo-50/30 z-10 border-l border-gray-50">
                     <div className="flex items-center justify-end space-x-3">
-                      <button onClick={() => alert("Edit mode coming soon - update functional in v1.1")} className="text-indigo-600 font-bold">Edit</button>
+                      <button onClick={() => alert("Edit mode functional via SQL Console in v1.0")} className="text-indigo-600 font-bold">Edit</button>
                       <button onClick={() => onDelete(t.id)} className="text-red-400 hover:text-red-600">Delete</button>
                     </div>
                   </td>
