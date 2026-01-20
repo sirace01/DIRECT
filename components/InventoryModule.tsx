@@ -24,9 +24,24 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [isLabModalOpen, setIsLabModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // New Item States
-  const [toolForm, setToolForm] = useState({ name: '', serialNumber: '', condition: 'Good' });
-  const [labForm, setLabForm] = useState({ name: '', quantity: 0, unit: 'pcs', expiryDate: '', location: '' });
+  // New Item States with explicit typing to satisfy ToolItem['condition'] union
+  const [toolForm, setToolForm] = useState<{
+    name: string;
+    serialNumber: string;
+    condition: ToolItem['condition'];
+  }>({ 
+    name: '', 
+    serialNumber: '', 
+    condition: 'Good' 
+  });
+  
+  const [labForm, setLabForm] = useState({ 
+    name: '', 
+    quantity: 0, 
+    unit: 'pcs', 
+    expiryDate: '', 
+    location: '' 
+  });
 
   const handleToolSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,7 +203,11 @@ const InventoryModule: React.FC<InventoryModuleProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Initial Condition</label>
-                <select className="w-full border rounded-lg p-2 text-sm" value={toolForm.condition} onChange={e => setToolForm({...toolForm, condition: e.target.value})}>
+                <select 
+                  className="w-full border rounded-lg p-2 text-sm" 
+                  value={toolForm.condition} 
+                  onChange={e => setToolForm({...toolForm, condition: e.target.value as ToolItem['condition']})}
+                >
                   <option value="Good">Good</option>
                   <option value="Fair">Fair</option>
                   <option value="Defective">Defective</option>
