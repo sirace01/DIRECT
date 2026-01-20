@@ -1,6 +1,6 @@
 {
-  "name": "Project D.I.R.E.C.T.",
-  "description": "Departmental Integrated Records, Evaluation, and Comprehensive Tracking System - A comprehensive school management solution for teachers, inventory, and academic performance.",
+  "name": "Project D.I.R.E.C.T. (Cloud)",
+  "description": "Departmental Integrated Records, Evaluation, and Comprehensive Tracking System - Professional suite integrated with Neon PostgreSQL and Google Gemini AI.",
   "requestFramePermissions": [
     "camera"
   ]

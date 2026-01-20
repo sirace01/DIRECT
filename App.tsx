@@ -6,13 +6,6 @@ import TeacherModule from './components/TeacherModule';
 import InventoryModule from './components/InventoryModule';
 import ProposalView from './components/ProposalView';
 import { analyzeNotifications } from './services/geminiService';
-import { 
-  MOCK_TEACHERS, 
-  MOCK_TASKS, 
-  MOCK_TOOLS, 
-  MOCK_CONSUMABLES, 
-  MOCK_ITEM_ANALYSIS 
-} from './constants';
 import { Notification, UserRole, Teacher, Task, ToolItem, LabConsumable, ItemAnalysis } from './types';
 
 const App: React.FC = () => {
@@ -21,27 +14,27 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [dbConnected, setDbConnected] = useState(false);
 
-  // State Management
-  const [teachers, setTeachers] = useState<Teacher[]>(MOCK_TEACHERS);
-  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
-  const [tools, setTools] = useState<ToolItem[]>(MOCK_TOOLS);
-  const [consumables, setConsumables] = useState<LabConsumable[]>(MOCK_CONSUMABLES);
-  const [analyses, setAnalyses] = useState<ItemAnalysis[]>(MOCK_ITEM_ANALYSIS);
+  // State Management - Initialized with empty arrays
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tools, setTools] = useState<ToolItem[]>([]);
+  const [consumables, setConsumables] = useState<LabConsumable[]>([]);
+  const [analyses, setAnalyses] = useState<ItemAnalysis[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Initial Data Load
+  // Initial Data Load from API/Database
   useEffect(() => {
     const loadAllData = async () => {
       setIsLoading(true);
       try {
-        const [resTeachers, resTasks, resTools, resConsumables] = await Promise.all([
+        const [resTeachers, resTasks, resTools, resConsumables, resAnalyses] = await Promise.all([
           fetch('/api/teachers'),
           fetch('/api/tasks'),
           fetch('/api/inventory?type=tools'),
-          fetch('/api/inventory?type=consumables')
+          fetch('/api/inventory?type=consumables'),
+          fetch('/api/analyses')
         ]);
 
-        // Helper to check if response is valid JSON
         const safeJson = async (res: Response) => {
           if (!res.ok) return null;
           const contentType = res.headers.get("content-type");
@@ -51,28 +44,27 @@ const App: React.FC = () => {
           return null;
         };
 
-        const [dataTeachers, dataTasks, dataTools, dataConsumables] = await Promise.all([
+        const [dataTeachers, dataTasks, dataTools, dataConsumables, dataAnalyses] = await Promise.all([
           safeJson(resTeachers),
           safeJson(resTasks),
           safeJson(resTools),
-          safeJson(resConsumables)
+          safeJson(resConsumables),
+          safeJson(resAnalyses)
         ]);
 
-        if (dataTeachers) {
-          setTeachers(dataTeachers);
-          setDbConnected(true);
-        }
+        if (dataTeachers) setTeachers(dataTeachers);
         if (dataTasks) setTasks(dataTasks);
         if (dataTools) setTools(dataTools);
         if (dataConsumables) setConsumables(dataConsumables);
+        if (dataAnalyses) setAnalyses(dataAnalyses);
         
+        setDbConnected(true);
+
         // Smart Notifications via Gemini
-        const currentConsumables = dataConsumables || MOCK_CONSUMABLES;
-        const currentTasks = dataTasks || MOCK_TASKS;
-        const alerts = await analyzeNotifications(currentConsumables, currentTasks);
+        const alerts = await analyzeNotifications(dataConsumables || [], dataTasks || []);
         setNotifications(alerts);
       } catch (error) {
-        console.warn("Database sync unavailable. Using offline mock data.", error);
+        console.error("Database connection failed:", error);
         setDbConnected(false);
       } finally {
         setIsLoading(false);
@@ -81,13 +73,11 @@ const App: React.FC = () => {
     loadAllData();
   }, []);
 
-  // Handler Functions with DB Persistence + Local Fallback
   const handleToggleTask = async (id: string) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newStatus = task.status === 'Pending' ? 'Done' : 'Pending';
     
-    // Update locally first for snappy UI
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
 
     try {
@@ -133,7 +123,6 @@ const App: React.FC = () => {
   };
 
   const handleAddTeacher = async (newTeacher: Teacher) => {
-    setTeachers(prev => [newTeacher, ...prev]);
     try {
       const res = await fetch('/api/teachers', {
         method: 'POST',
@@ -142,27 +131,29 @@ const App: React.FC = () => {
       });
       if (res.ok) {
         const savedTeacher = await res.json();
-        setTeachers(prev => prev.map(t => t.id === newTeacher.id ? savedTeacher : t));
+        setTeachers(prev => [savedTeacher, ...prev]);
       }
     } catch (e) {
       console.error("Failed to sync new teacher to DB");
+      // Fallback for visual continuity if needed, but we prefer DB state
     }
   };
 
   const handleDeleteTeacher = async (id: string) => {
     if(window.confirm("Permanently delete this teacher profile?")) {
-      setTeachers(prev => prev.filter(t => t.id !== id));
       try {
-        await fetch(`/api/teachers?id=${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/teachers?id=${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          setTeachers(prev => prev.filter(t => t.id !== id));
+        }
       } catch (e) {
         console.error("Failed to delete from DB");
       }
     }
   };
 
-  const handleUploadSimulation = () => {
-    const newAnalysis: ItemAnalysis = {
-      id: `ia-${Date.now()}`,
+  const handleUploadSimulation = async () => {
+    const newAnalysis = {
       gradeLevel: 12,
       specialization: 'TVL - ICT',
       quarter: 2,
@@ -173,8 +164,21 @@ const App: React.FC = () => {
         totalExaminees: 40
       }))
     };
-    setAnalyses(prev => [newAnalysis, ...prev]);
-    alert("Simulation complete: New report added to current session.");
+
+    try {
+      const res = await fetch('/api/analyses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAnalysis)
+      });
+      if (res.ok) {
+        const savedAnalysis = await res.json();
+        setAnalyses(prev => [savedAnalysis, ...prev]);
+        alert("Report generated and saved to database!");
+      }
+    } catch (e) {
+      console.error("Failed to save simulation to DB");
+    }
   };
 
   if (isLoading) {
@@ -182,7 +186,7 @@ const App: React.FC = () => {
       <div className="h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-500 font-medium">Initializing School Admin Suite...</p>
+          <p className="mt-4 text-gray-500 font-medium">Synchronizing with Neon Database...</p>
         </div>
       </div>
     );
@@ -199,33 +203,38 @@ const App: React.FC = () => {
           <div className="bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
             <h3 className="text-2xl font-bold text-gray-800 mb-4">Item Analysis Engine</h3>
             <p className="text-gray-500 mb-8 max-w-lg mx-auto">
-              {dbConnected ? 'Cloud Sync Active.' : 'Cloud Sync Offline (Using Local Mode).'} Upload periodical test results to generate mastery charts instantly.
+              {dbConnected ? 'Cloud Sync Active (Neon PostgreSQL).' : 'Cloud Sync Offline.'} Upload periodical test results to generate mastery charts and track student progress.
             </p>
             <div className="flex justify-center space-x-4">
               <button 
                 onClick={handleUploadSimulation}
                 className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg"
               >
-                Upload CSV Simulation
+                Upload & Generate Simulation Report
               </button>
             </div>
             <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
               <div className="p-6 border border-gray-100 rounded-lg">
-                <h4 className="font-bold text-gray-800 mb-4 uppercase text-xs tracking-widest text-indigo-600">History</h4>
+                <h4 className="font-bold text-gray-800 mb-4 uppercase text-xs tracking-widest text-indigo-600">Report Registry</h4>
                 <ul className="space-y-3">
-                  {analyses.map(a => (
-                    <li key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 group">
-                      <span className="text-sm text-gray-700 font-bold">Grade {a.gradeLevel} - Q{a.quarter} Analysis</span>
-                      <button className="text-[10px] bg-white border border-gray-200 px-2 py-1 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">View PDF</button>
-                    </li>
-                  ))}
+                  {analyses.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">No reports found in database.</p>
+                  ) : (
+                    analyses.map(a => (
+                      <li key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 group">
+                        <span className="text-sm text-gray-700 font-bold">Grade {a.gradeLevel} - {a.specialization} (Q{a.quarter})</span>
+                        <button className="text-[10px] bg-white border border-gray-200 px-2 py-1 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">View Results</button>
+                      </li>
+                    ))
+                  )}
                 </ul>
               </div>
-              <div className="p-6 border border-gray-100 rounded-lg bg-indigo-50 flex items-center justify-center">
+              <div className="p-6 border border-gray-100 rounded-lg bg-indigo-50 flex flex-col items-center justify-center">
+                <div className={`w-3 h-3 rounded-full mb-2 ${dbConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <p className="text-xs text-indigo-700 italic font-medium text-center">
                   {dbConnected 
-                    ? "Neon DB is connected. All records are persistent." 
-                    : "Note: DB connection missing. Changes will only persist in the current browser session."}
+                    ? "Live Database: Neon PostgreSQL is connected." 
+                    : "Error: Could not reach Neon PostgreSQL. Ensure DATABASE_URL is set."}
                 </p>
               </div>
             </div>
@@ -243,28 +252,34 @@ const App: React.FC = () => {
       case 'tasks':
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {tasks.map(task => (
-              <div key={task.id} className={`bg-white p-6 rounded-2xl shadow-sm border transition-all duration-300 ${task.status === 'Done' ? 'border-green-100 opacity-75' : 'border-gray-100 hover:shadow-md'}`}>
-                <div className="flex justify-between items-start mb-4">
-                  <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${
-                    task.status === 'Done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {task.status}
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-400">DUE {task.deadline}</span>
-                </div>
-                <h4 className={`text-lg font-black text-gray-900 leading-tight mb-2 ${task.status === 'Done' ? 'line-through' : ''}`}>{task.title}</h4>
-                <p className="text-xs text-gray-500 mb-6">Assigned: <span className="font-bold text-gray-700">{task.assignedTo}</span></p>
-                <button 
-                  onClick={() => handleToggleTask(task.id)}
-                  className={`w-full py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-colors ${
-                    task.status === 'Done' ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                  }`}
-                >
-                  {task.status === 'Done' ? 'Reopen' : 'Complete'}
-                </button>
+            {tasks.length === 0 ? (
+              <div className="col-span-full py-20 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+                <p className="text-gray-400 font-medium">No tasks found in registry.</p>
               </div>
-            ))}
+            ) : (
+              tasks.map(task => (
+                <div key={task.id} className={`bg-white p-6 rounded-2xl shadow-sm border transition-all duration-300 ${task.status === 'Done' ? 'border-green-100 opacity-75' : 'border-gray-100 hover:shadow-md'}`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${
+                      task.status === 'Done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {task.status}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-400">DUE {new Date(task.deadline).toLocaleDateString()}</span>
+                  </div>
+                  <h4 className={`text-lg font-black text-gray-900 leading-tight mb-2 ${task.status === 'Done' ? 'line-through' : ''}`}>{task.title}</h4>
+                  <p className="text-xs text-gray-500 mb-6">Assigned: <span className="font-bold text-gray-700">{task.assignedTo}</span></p>
+                  <button 
+                    onClick={() => handleToggleTask(task.id)}
+                    className={`w-full py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-colors ${
+                      task.status === 'Done' ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    }`}
+                  >
+                    {task.status === 'Done' ? 'Reopen' : 'Complete'}
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         );
       case 'proposal':

@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Tools Table
+-- 2. Tools Table (Assets)
 CREATE TABLE IF NOT EXISTS tools (
     id SERIAL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS tools (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Consumables Table
+-- 3. Consumables Table (Lab Supplies)
 CREATE TABLE IF NOT EXISTS consumables (
     id SERIAL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -66,7 +66,16 @@ CREATE TABLE IF NOT EXISTS analyses (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Seed basic data (optional)
+-- Initial Deployment Tasks (Seeding)
+-- Note: These will only insert if the task doesn't exist already to avoid duplication on schema updates
 INSERT INTO tasks ("title", "assignedTo", "deadline", "status") 
-VALUES ('System Initial Deployment', 'Principal', CURRENT_DATE + INTERVAL '7 days', 'Pending')
-ON CONFLICT DO NOTHING;
+SELECT 'Configure Neon DB Environment', 'System Admin', CURRENT_DATE + INTERVAL '1 day', 'Pending'
+WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE title = 'Configure Neon DB Environment');
+
+INSERT INTO tasks ("title", "assignedTo", "deadline", "status") 
+SELECT 'Register Initial Faculty Profiles', 'Department Head', CURRENT_DATE + INTERVAL '3 days', 'Pending'
+WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE title = 'Register Initial Faculty Profiles');
+
+INSERT INTO tasks ("title", "assignedTo", "deadline", "status") 
+SELECT 'Perform Lab Equipment Inventory', 'Property Custodian', CURRENT_DATE + INTERVAL '7 days', 'Pending'
+WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE title = 'Perform Lab Equipment Inventory');
