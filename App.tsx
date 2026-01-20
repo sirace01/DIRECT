@@ -29,6 +29,8 @@ const App: React.FC = () => {
 
   const loadAllData = async () => {
     const currentUrl = getDatabaseUrl();
+    
+    // Now setupMode is only triggered if even the hardcoded fallback is missing (which shouldn't happen)
     if (!currentUrl) {
       setSetupMode(true);
       setIsLoading(false);
@@ -49,7 +51,6 @@ const App: React.FC = () => {
         sql`SELECT * FROM analyses ORDER BY created_at DESC`
       ]);
 
-      // Added explicit :any types to map parameters to fix TS7006 build errors
       setTeachers(dbTeachers.map((t: any) => ({ ...t, id: String(t.id) })) as Teacher[]);
       setTasks(dbTasks.map((t: any) => ({ ...t, id: String(t.id) })) as Task[]);
       setTools(dbTools.map((t: any) => ({ ...t, id: String(t.id) })) as ToolItem[]);
@@ -66,7 +67,8 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Connection Failed:", err);
       setDbConnected(false);
-      setError(err.message || "Failed to establish a connection to the database.");
+      // If error occurs, we show the setup screen so the user can debug/fix the URL
+      setError(err.message || "Failed to establish a connection to the database cluster.");
     } finally {
       setIsLoading(false);
     }
@@ -79,7 +81,6 @@ const App: React.FC = () => {
   const handleSaveConnection = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUrl = tempUrl.trim();
-    // Inclusive check for both postgres:// and postgresql://
     if (!cleanUrl.startsWith('postgres://') && !cleanUrl.startsWith('postgresql://')) {
       setError("Invalid Protocol. Connection string must start with 'postgres://' or 'postgresql://'");
       return;
@@ -191,48 +192,46 @@ const App: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
           <p className="mt-4 text-gray-500 font-medium tracking-tight">Synchronizing with Neon Cloud...</p>
+          <p className="text-[10px] text-gray-400 mt-2 font-mono">{getDatabaseUrl()?.substring(0, 30)}...</p>
         </div>
       </div>
     );
   }
 
+  // Error/Setup screen only appears if the hardcoded link fails or is missing
   if (setupMode || error) {
     return (
       <div className="h-screen flex items-center justify-center bg-indigo-950 p-6 overflow-y-auto">
         <div className="max-w-xl w-full bg-white p-10 rounded-[2.5rem] shadow-2xl border border-indigo-100">
           <div className="flex items-center space-x-5 mb-10">
-            <div className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            <div className="w-14 h-14 bg-rose-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-rose-200">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </div>
             <div>
-              <h2 className="text-3xl font-black text-gray-900 tracking-tight leading-none">Cloud Link</h2>
-              <p className="text-xs text-gray-400 mt-1 uppercase font-black tracking-[0.2em]">Neon PostgreSQL Integration</p>
+              <h2 className="text-3xl font-black text-gray-900 tracking-tight leading-none">Connection Issue</h2>
+              <p className="text-xs text-gray-400 mt-1 uppercase font-black tracking-[0.2em]">Neon PostgreSQL Error</p>
             </div>
           </div>
 
-          <div className="bg-indigo-50 border-l-4 border-indigo-600 p-5 rounded-r-2xl mb-10">
-            <h4 className="text-sm font-black text-indigo-900 mb-1 uppercase">Connection String Required</h4>
-            <p className="text-xs text-indigo-700 font-medium leading-relaxed">
-              Paste the <span className="font-bold">postgresql://</span> string from your Neon dashboard to activate the administrative database.
+          <div className="bg-rose-50 border-l-4 border-rose-600 p-5 rounded-r-2xl mb-10">
+            <h4 className="text-sm font-black text-rose-900 mb-1 uppercase">Database Link Failed</h4>
+            <p className="text-xs text-rose-700 font-medium leading-relaxed">
+              The hardcoded system link could not establish a connection. Please verify your Neon project status or paste a new connection string below.
             </p>
           </div>
 
           <form onSubmit={handleSaveConnection} className="space-y-8">
             <div className="group">
-              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 group-focus-within:text-indigo-600 transition-colors">DATABASE_URL String</label>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 group-focus-within:text-indigo-600 transition-colors">Emergency DATABASE_URL Override</label>
               <textarea
                 required
                 rows={4}
                 autoFocus
-                placeholder="postgresql://user:pass@ep-host.region.aws.neon.tech/neondb?sslmode=require"
+                placeholder="postgresql://..."
                 className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-8 focus:ring-indigo-600/5 focus:border-indigo-600 focus:bg-white transition-all font-mono text-xs text-gray-600 leading-relaxed outline-none"
                 value={tempUrl}
                 onChange={(e) => setTempUrl(e.target.value)}
               />
-              <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Status Hint:</p>
-                <p className="text-[11px] text-gray-400 italic">Example format: postgresql://neondb_owner:npg_...ep-shiny-pond...</p>
-              </div>
             </div>
 
             {error && (
@@ -244,29 +243,17 @@ const App: React.FC = () => {
 
             <div className="space-y-4">
               <button type="submit" className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 uppercase tracking-widest active:scale-[0.98]">
-                Establish Direct System Link
+                Retry with New Connection
               </button>
               <button 
                 type="button" 
-                onClick={() => {
-                  localStorage.removeItem('DIRECT_SYSTEM_DB_URL');
-                  window.location.reload();
-                }}
+                onClick={() => window.location.reload()}
                 className="w-full text-gray-400 font-black py-2 rounded-xl hover:text-gray-600 transition-colors uppercase tracking-widest text-[10px]"
               >
-                Clear Settings
+                Reload with Hardcoded Default
               </button>
             </div>
           </form>
-
-          <div className="mt-12 pt-8 border-t border-gray-100 flex items-center justify-between opacity-40">
-            <p className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Project D.I.R.E.C.T. • v2.0.4 • SSL Encrypted</p>
-            <div className="flex space-x-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>
-            </div>
-          </div>
         </div>
       </div>
     );

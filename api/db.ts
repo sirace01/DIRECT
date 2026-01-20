@@ -2,18 +2,29 @@
 import { neon } from '@neondatabase/serverless';
 
 /**
+ * Your specific Neon Connection String hardcoded for direct access.
+ */
+const HARDCODED_DB_URL = "postgresql://neondb_owner:npg_B8WTUrgV5NKH@ep-shiny-pond-a1csb4t5-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+
+/**
  * Utility to get the database URL from multiple sources:
  * 1. process.env (Standard/Production)
- * 2. localStorage (Local development/Temporary fix)
+ * 2. Hardcoded Fallback (Direct Link)
+ * 3. localStorage (User Override)
  */
 export const getDatabaseUrl = () => {
+  // 1. Check for Environment Variable (Best Practice)
   const envUrl = process.env.DATABASE_URL;
   if (envUrl && envUrl.trim() !== "") return envUrl;
   
+  // 2. Check for Manual LocalStorage override
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('DIRECT_SYSTEM_DB_URL');
+    const localUrl = localStorage.getItem('DIRECT_SYSTEM_DB_URL');
+    if (localUrl) return localUrl;
   }
-  return null;
+  
+  // 3. Use the hardcoded direct link provided by the user
+  return HARDCODED_DB_URL;
 };
 
 export const setDatabaseUrl = (url: string) => {
