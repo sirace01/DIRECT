@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { sql } from '../api/db';
 
 const SQLEditor: React.FC = () => {
-  const [query, setQuery] = useState('SELECT * FROM teachers LIMIT 10;');
+  const [query, setQuery] = useState('SELECT * FROM laboratories LIMIT 10;');
   const [results, setResults] = useState<any[] | null>(null);
   const [error, setError] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +31,7 @@ const SQLEditor: React.FC = () => {
   };
 
   const quickTables = [
+    { label: 'Laboratories', query: 'SELECT * FROM laboratories;' },
     { label: 'Teachers', query: 'SELECT * FROM teachers;' },
     { label: 'Tools', query: 'SELECT * FROM tools;' },
     { label: 'Consumables', query: 'SELECT * FROM consumables;' },

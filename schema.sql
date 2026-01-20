@@ -1,7 +1,8 @@
 
--- Project D.I.R.E.C.T. - Database Schema for Neon PostgreSQL
+-- Project D.I.R.E.C.T. - Comprehensive Database Schema
+-- Run this in your Neon SQL Editor to set up the environment.
 
--- 1. Laboratories Table: Manage physical lab rooms
+-- 1. Laboratories (Parent Table)
 CREATE TABLE IF NOT EXISTS laboratories (
     id SERIAL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -12,7 +13,7 @@ CREATE TABLE IF NOT EXISTS laboratories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Teachers Table
+-- 2. Teachers Profile Registry
 CREATE TABLE IF NOT EXISTS teachers (
     id SERIAL PRIMARY KEY,
     "firstName" TEXT NOT NULL,
@@ -34,7 +35,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Tools Table: Linked to laboratories
+-- 3. Tools & Equipment (Linked to Lab)
 CREATE TABLE IF NOT EXISTS tools (
     id SERIAL PRIMARY KEY,
     "labId" INTEGER REFERENCES laboratories(id) ON DELETE SET NULL,
@@ -46,7 +47,7 @@ CREATE TABLE IF NOT EXISTS tools (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Consumables Table: Linked to laboratories
+-- 4. Lab Consumables (Linked to Lab)
 CREATE TABLE IF NOT EXISTS consumables (
     id SERIAL PRIMARY KEY,
     "labId" INTEGER REFERENCES laboratories(id) ON DELETE SET NULL,
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS consumables (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Tasks Table
+-- 5. Administrative Tasks
 CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY,
     "title" TEXT NOT NULL,
@@ -68,7 +69,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Item Analysis Table
+-- 6. Item Analysis Reports
 CREATE TABLE IF NOT EXISTS analyses (
     id SERIAL PRIMARY KEY,
     "gradeLevel" INTEGER,
@@ -79,22 +80,20 @@ CREATE TABLE IF NOT EXISTS analyses (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- SEED DATA
+-- INITIAL SEEDING
 INSERT INTO laboratories ("name", "building", "floor", "condition", "status")
 VALUES 
-('Computer Laboratory 1', 'Science Building', '1st Floor', 'Functional', 'Available'),
-('Computer Laboratory 2', 'Science Building', '2nd Floor', 'Functional', 'Available'),
-('Electronics Lab', 'TVL Building', 'Ground Floor', 'Maintenance', 'Occupied')
+('ICT Laboratory 1', 'ICT Building', '1st Floor', 'Functional', 'Available'),
+('Computer Servicing Room', 'ICT Building', '2nd Floor', 'Functional', 'Available'),
+('Electronics Lab', 'TVL Center', 'Ground Floor', 'Maintenance', 'Occupied')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO teachers ("firstName", "lastName", "empNo", "dob", "subjectTaught", "position", "educationBS")
-SELECT 'Maria', 'Santos', 'EMP-2024-001', '1985-05-15', 'Computer Systems Servicing', 'Teacher III', 'BS Information Technology'
-WHERE NOT EXISTS (SELECT 1 FROM teachers WHERE "empNo" = 'EMP-2024-001');
-
+-- Seed a tool for the first lab
 INSERT INTO tools ("labId", "name", "serialNumber", "condition")
-SELECT 1, 'Digital Multimeter', 'DMM-SN-9921', 'Good'
-WHERE NOT EXISTS (SELECT 1 FROM tools WHERE "serialNumber" = 'DMM-SN-9921');
+SELECT 1, 'Oscilloscope', 'OSC-2024-X1', 'Good'
+WHERE NOT EXISTS (SELECT 1 FROM tools WHERE "serialNumber" = 'OSC-2024-X1');
 
+-- Seed a consumable for the first lab
 INSERT INTO consumables ("labId", "name", "quantity", "unit", "expiryDate", "location")
-SELECT 1, 'Cat6 UTP Cable', 200, 'meters', '2026-12-31', 'Cabinet A'
-WHERE NOT EXISTS (SELECT 1 FROM consumables WHERE "name" = 'Cat6 UTP Cable');
+SELECT 1, 'Solder Wire (Lead Free)', 50, 'rolls', '2027-01-01', 'Storage Cabinet B'
+WHERE NOT EXISTS (SELECT 1 FROM consumables WHERE "name" = 'Solder Wire (Lead Free)');
