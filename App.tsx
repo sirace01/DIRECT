@@ -6,6 +6,7 @@ import TeacherModule from './components/TeacherModule';
 import InventoryModule from './components/InventoryModule';
 import ProposalView from './components/ProposalView';
 import { analyzeNotifications } from './services/geminiService';
+import { sql } from './api/db';
 import { Notification, UserRole, Teacher, Task, ToolItem, LabConsumable, ItemAnalysis } from './types';
 
 const App: React.FC = () => {
@@ -13,8 +14,9 @@ const App: React.FC = () => {
   const [role] = useState<UserRole>('ADMIN');
   const [isLoading, setIsLoading] = useState(true);
   const [dbConnected, setDbConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // State Management - Initialized with empty arrays
+  // State Management
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tools, setTools] = useState<ToolItem[]>([]);
@@ -22,50 +24,45 @@ const App: React.FC = () => {
   const [analyses, setAnalyses] = useState<ItemAnalysis[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Initial Data Load from API/Database
   useEffect(() => {
     const loadAllData = async () => {
       setIsLoading(true);
+      setError(null);
+      
       try {
-        const [resTeachers, resTasks, resTools, resConsumables, resAnalyses] = await Promise.all([
-          fetch('/api/teachers'),
-          fetch('/api/tasks'),
-          fetch('/api/inventory?type=tools'),
-          fetch('/api/inventory?type=consumables'),
-          fetch('/api/analyses')
+        // Direct Database Load
+        const [dbTeachers, dbTasks, dbTools, dbConsumables, dbAnalyses] = await Promise.all([
+          sql`SELECT * FROM teachers ORDER BY "lastName" ASC`,
+          sql`SELECT * FROM tasks ORDER BY deadline ASC`,
+          sql`SELECT * FROM tools ORDER BY name ASC`,
+          sql`SELECT * FROM consumables ORDER BY name ASC`,
+          sql`SELECT * FROM analyses ORDER BY created_at DESC`
         ]);
 
-        const safeJson = async (res: Response) => {
-          if (!res.ok) return null;
-          const contentType = res.headers.get("content-type");
-          if (contentType && contentType.indexOf("application/json") !== -1) {
-            return res.json();
-          }
-          return null;
-        };
+        const mappedTeachers = dbTeachers.map(t => ({ ...t, id: String(t.id) })) as Teacher[];
+        const mappedTasks = dbTasks.map(t => ({ ...t, id: String(t.id) })) as Task[];
+        const mappedTools = dbTools.map(t => ({ ...t, id: String(t.id) })) as ToolItem[];
+        const mappedConsumables = dbConsumables.map(c => ({ ...c, id: String(c.id) })) as LabConsumable[];
+        const mappedAnalyses = dbAnalyses.map(a => ({ 
+          ...a, 
+          id: String(a.id),
+          responses: typeof a.responses === 'string' ? JSON.parse(a.responses) : a.responses
+        })) as ItemAnalysis[];
 
-        const [dataTeachers, dataTasks, dataTools, dataConsumables, dataAnalyses] = await Promise.all([
-          safeJson(resTeachers),
-          safeJson(resTasks),
-          safeJson(resTools),
-          safeJson(resConsumables),
-          safeJson(resAnalyses)
-        ]);
-
-        if (dataTeachers) setTeachers(dataTeachers);
-        if (dataTasks) setTasks(dataTasks);
-        if (dataTools) setTools(dataTools);
-        if (dataConsumables) setConsumables(dataConsumables);
-        if (dataAnalyses) setAnalyses(dataAnalyses);
+        setTeachers(mappedTeachers);
+        setTasks(mappedTasks);
+        setTools(mappedTools);
+        setConsumables(mappedConsumables);
+        setAnalyses(mappedAnalyses);
         
         setDbConnected(true);
 
-        // Smart Notifications via Gemini
-        const alerts = await analyzeNotifications(dataConsumables || [], dataTasks || []);
+        const alerts = await analyzeNotifications(mappedConsumables, mappedTasks);
         setNotifications(alerts);
-      } catch (error) {
-        console.error("Database connection failed:", error);
+      } catch (err: any) {
+        console.error("System Bootstrap Failed:", err);
         setDbConnected(false);
+        setError(err.message || "Failed to establish a connection to the database.");
       } finally {
         setIsLoading(false);
       }
@@ -77,36 +74,28 @@ const App: React.FC = () => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newStatus = task.status === 'Pending' ? 'Done' : 'Pending';
-    
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
-
     try {
       await fetch(`/api/tasks?id=${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
-    } catch (e) {
-      console.error("Failed to sync task update to DB");
-    }
+    } catch (e) { console.error("Sync Error:", e); }
   };
 
   const handleUpdateConsumable = async (id: string, amount: number) => {
     const item = consumables.find(c => c.id === id);
     if (!item) return;
     const newQty = Math.max(0, item.quantity + amount);
-
     setConsumables(prev => prev.map(c => c.id === id ? { ...c, quantity: newQty } : c));
-
     try {
       await fetch(`/api/inventory?type=consumables&id=${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quantity: newQty })
       });
-    } catch (e) {
-      console.error("Failed to sync inventory update");
-    }
+    } catch (e) { console.error("Sync Error:", e); }
   };
 
   const handleUpdateTool = async (id: string, condition: ToolItem['condition']) => {
@@ -117,9 +106,7 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ condition })
       });
-    } catch (e) {
-      console.error("Failed to sync tool update");
-    }
+    } catch (e) { console.error("Sync Error:", e); }
   };
 
   const handleAddTeacher = async (newTeacher: Teacher) => {
@@ -131,12 +118,9 @@ const App: React.FC = () => {
       });
       if (res.ok) {
         const savedTeacher = await res.json();
-        setTeachers(prev => [savedTeacher, ...prev]);
+        setTeachers(prev => [ { ...savedTeacher, id: String(savedTeacher.id) }, ...prev]);
       }
-    } catch (e) {
-      console.error("Failed to sync new teacher to DB");
-      // Fallback for visual continuity if needed, but we prefer DB state
-    }
+    } catch (e) { console.error("Sync Error:", e); }
   };
 
   const handleDeleteTeacher = async (id: string) => {
@@ -146,9 +130,7 @@ const App: React.FC = () => {
         if (res.ok) {
           setTeachers(prev => prev.filter(t => t.id !== id));
         }
-      } catch (e) {
-        console.error("Failed to delete from DB");
-      }
+      } catch (e) { console.error("Sync Error:", e); }
     }
   };
 
@@ -164,7 +146,6 @@ const App: React.FC = () => {
         totalExaminees: 40
       }))
     };
-
     try {
       const res = await fetch('/api/analyses', {
         method: 'POST',
@@ -173,12 +154,10 @@ const App: React.FC = () => {
       });
       if (res.ok) {
         const savedAnalysis = await res.json();
-        setAnalyses(prev => [savedAnalysis, ...prev]);
+        setAnalyses(prev => [{ ...savedAnalysis, id: String(savedAnalysis.id) }, ...prev]);
         alert("Report generated and saved to database!");
       }
-    } catch (e) {
-      console.error("Failed to save simulation to DB");
-    }
+    } catch (e) { console.error("Sync Error:", e); }
   };
 
   if (isLoading) {
@@ -186,7 +165,33 @@ const App: React.FC = () => {
       <div className="h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-500 font-medium">Synchronizing with Neon Database...</p>
+          <p className="mt-4 text-gray-500 font-medium">Establishing Direct Link to Neon PostgreSQL...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50 p-6">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-red-100 text-center">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Configuration Required</h2>
+          <p className="text-sm text-gray-600 mb-6">{error}</p>
+          <div className="bg-gray-50 p-4 rounded-xl text-left mb-6">
+            <p className="text-xs font-bold text-gray-500 uppercase mb-2">Instructions:</p>
+            <ul className="text-xs text-gray-600 space-y-2 list-disc pl-4">
+              <li>Open your project settings in <b>Vercel</b>.</li>
+              <li>Go to <b>Environment Variables</b>.</li>
+              <li>Add <code>DATABASE_URL</code> with your Neon connection string.</li>
+              <li>Redeploy your application.</li>
+            </ul>
+          </div>
+          <button onClick={() => window.location.reload()} className="w-full bg-indigo-600 text-white font-bold py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+            Retry Connection
+          </button>
         </div>
       </div>
     );
@@ -203,13 +208,10 @@ const App: React.FC = () => {
           <div className="bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
             <h3 className="text-2xl font-bold text-gray-800 mb-4">Item Analysis Engine</h3>
             <p className="text-gray-500 mb-8 max-w-lg mx-auto">
-              {dbConnected ? 'Cloud Sync Active (Neon PostgreSQL).' : 'Cloud Sync Offline.'} Upload periodical test results to generate mastery charts and track student progress.
+              Direct Database Connection Active. Data is fetched directly from your Neon PostgreSQL cluster.
             </p>
             <div className="flex justify-center space-x-4">
-              <button 
-                onClick={handleUploadSimulation}
-                className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg"
-              >
+              <button onClick={handleUploadSimulation} className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg">
                 Upload & Generate Simulation Report
               </button>
             </div>
@@ -230,25 +232,14 @@ const App: React.FC = () => {
                 </ul>
               </div>
               <div className="p-6 border border-gray-100 rounded-lg bg-indigo-50 flex flex-col items-center justify-center">
-                <div className={`w-3 h-3 rounded-full mb-2 ${dbConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <p className="text-xs text-indigo-700 italic font-medium text-center">
-                  {dbConnected 
-                    ? "Live Database: Neon PostgreSQL is connected." 
-                    : "Error: Could not reach Neon PostgreSQL. Ensure DATABASE_URL is set."}
-                </p>
+                <div className="w-3 h-3 rounded-full mb-2 bg-green-500"></div>
+                <p className="text-xs text-indigo-700 italic font-medium text-center">Live: Frontend is connected directly to Neon.</p>
               </div>
             </div>
           </div>
         );
       case 'inventory':
-        return (
-          <InventoryModule 
-            tools={tools} 
-            consumables={consumables} 
-            onToolUpdate={handleUpdateTool} 
-            onConsumableUpdate={handleUpdateConsumable} 
-          />
-        );
+        return <InventoryModule tools={tools} consumables={consumables} onToolUpdate={handleUpdateTool} onConsumableUpdate={handleUpdateConsumable} />;
       case 'tasks':
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -260,21 +251,14 @@ const App: React.FC = () => {
               tasks.map(task => (
                 <div key={task.id} className={`bg-white p-6 rounded-2xl shadow-sm border transition-all duration-300 ${task.status === 'Done' ? 'border-green-100 opacity-75' : 'border-gray-100 hover:shadow-md'}`}>
                   <div className="flex justify-between items-start mb-4">
-                    <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${
-                      task.status === 'Done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
+                    <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${task.status === 'Done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                       {task.status}
                     </span>
                     <span className="text-[10px] font-bold text-gray-400">DUE {new Date(task.deadline).toLocaleDateString()}</span>
                   </div>
                   <h4 className={`text-lg font-black text-gray-900 leading-tight mb-2 ${task.status === 'Done' ? 'line-through' : ''}`}>{task.title}</h4>
                   <p className="text-xs text-gray-500 mb-6">Assigned: <span className="font-bold text-gray-700">{task.assignedTo}</span></p>
-                  <button 
-                    onClick={() => handleToggleTask(task.id)}
-                    className={`w-full py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-colors ${
-                      task.status === 'Done' ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                    }`}
-                  >
+                  <button onClick={() => handleToggleTask(task.id)} className={`w-full py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-colors ${task.status === 'Done' ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                     {task.status === 'Done' ? 'Reopen' : 'Complete'}
                   </button>
                 </div>

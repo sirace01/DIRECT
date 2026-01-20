@@ -5,9 +5,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Shims process.env to prevent crashes in the browser
     'process.env': {
-      API_KEY: process.env.API_KEY || ''
+      API_KEY: process.env.API_KEY || '',
+      DATABASE_URL: process.env.DATABASE_URL || ''
     }
   },
   build: {
